@@ -17,4 +17,4 @@ cabal-version:       >=1.8
 executable DocsDuck
   main-is: DocsDuck.hs
   -- other-modules:    
-  build-depends:       base >= 4.6, HTTP, http-conduit, http-client, conduit, tagsoup, bytestring
+  build-depends:       base >= 4.6, HTTP, http-conduit, http-client, conduit, tagsoup, bytestring, cassava, vector

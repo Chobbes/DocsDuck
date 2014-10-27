@@ -8,7 +8,7 @@ haskellPackages.cabal.mkDerivation (self: {
   src = ./.;
   isLibrary = false;
   isExecutable = true;
-  buildDepends = with haskellPackages; [ conduit HTTP httpClient httpConduit tagsoup ];
+  buildDepends = with haskellPackages; [ conduit HTTP httpClient httpConduit tagsoup cassava vector ];
   meta = {
     description = "A simple Haskell program for importing moodle grades into DocsDB";
     license = self.stdenv.lib.licenses.mit;
