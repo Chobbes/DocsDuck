@@ -63,11 +63,11 @@ vecToSub v = Submission first last email sid ccid grade
   where [first, last, email, sidStr, ccid, gradeStr] = map unpack (V.toList v)
         grade = stringToGrade gradeStr
         sid = read sidStr
-        
+
+-- | Create a list of submissions from a vector of vector ByteStrings.
 vecToSubs :: V.Vector (V.Vector ByteString) -> [Submission]
 vecToSubs vs = map vecToSub (V.toList vs)
 
--- uploadGrades user pass secretNum maxMark subs
 main :: IO ()
 main = do [user, pass, gradeFile, assignment] <- getArgs
           subs <- LB.readFile gradeFile
