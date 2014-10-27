@@ -69,7 +69,7 @@ vecToSubs :: V.Vector (V.Vector ByteString) -> [Submission]
 vecToSubs vs = map vecToSub (V.toList vs)
 
 main :: IO ()
-main = do [user, pass, gradeFile, assignment] <- getArgs
+main = do [user, pass, course, gradeFile, assignment] <- getArgs
           subs <- LB.readFile gradeFile
           let (Right decodedSubs) = decode HasHeader subs :: Either String (V.Vector (V.Vector ByteString))
 
@@ -79,12 +79,12 @@ main = do [user, pass, gradeFile, assignment] <- getArgs
           let oraclePass = LB.unpack . extractPass $ responseBody res
           
           -- Fetch the assignment information in order to get the secret number.
-          request <- getAssign user oraclePass assignment
+          request <- getAssign user oraclePass course assignment
           res <- withManager (httpLbs request)
           let secretNum =  LB.unpack . extractSecretNum $ responseBody res
           
           -- Upload the grades to docsdb.
-          request <- uploadGrades user oraclePass secretNum 100 (vecToSubs decodedSubs)
+          request <- uploadGrades user oraclePass course  secretNum 100 (vecToSubs decodedSubs)
           res <- withManager (httpLbs request)
 
           -- Print the response just in case it's useful.
@@ -118,27 +118,27 @@ extractSecretNum res = secretNum
          tags = parseTags res
 
 -- | Given a user, and oracle password, return an assignment
-getAssign user pass assign = do initReq <- parseUrl "https://docsdb.cs.ualberta.ca/Prod/entersection2.cgi"
-                                let req = initReq { method = "POST"
-                                                  , secure = True}
-                                return $ urlEncodedBody [("oracle.login", pack user)
-                                                        ,("oracle.password", pack pass)
-                                                        ,("season", "Fall")
-                                                        ,("year", "2014")
-                                                        ,("abbrev", "CMPUT")
-                                                        ,("coursenum", "274")
-                                                        ,("secttype", "All Sections")
-                                                        ,("sectpre", "")
-                                                        ,("sectnum", "")
-                                                        ,("type", "")
-                                                        ,("num", "")
-                                                        ,("order_by", "Student ID")
-                                                        ,(".submit", "Get List")
-                                                        ,("assignment", pack assign)
-                                                        ,("term", "1490")] req
+getAssign user pass course assign = do initReq <- parseUrl "https://docsdb.cs.ualberta.ca/Prod/entersection2.cgi"
+                                       let req = initReq { method = "POST"
+                                                         , secure = True}
+                                       return $ urlEncodedBody [("oracle.login", pack user)
+                                                               ,("oracle.password", pack pass)
+                                                               ,("season", "Fall")
+                                                               ,("year", "2014")
+                                                               ,("abbrev", "CMPUT")
+                                                               ,("coursenum", pack course)
+                                                               ,("secttype", "All Sections")
+                                                               ,("sectpre", "")
+                                                               ,("sectnum", "")
+                                                               ,("type", "")
+                                                               ,("num", "")
+                                                               ,("order_by", "Student ID")
+                                                               ,(".submit", "Get List")
+                                                               ,("assignment", pack assign)
+                                                               ,("term", "1490")] req
 
 -- | Send submissions to DocsDB
-uploadGrades user pass secretNum maxMark subs = 
+uploadGrades user pass course secretNum maxMark subs = 
   do initReq <- parseUrl "https://docsdb.cs.ualberta.ca/Prod/entersection3.cgi"
      let req = initReq {method = "POST"
                        ,secure = True}
@@ -148,7 +148,7 @@ uploadGrades user pass secretNum maxMark subs =
                                         ,("season", "Fall")
                                         ,("year", "2014")
                                         ,("abbrev", "CMPUT")
-                                        ,("coursenum", "274")
+                                        ,("coursenum", pack course)
                                         ,("secttype", "All Sections")
                                         ,("sectnum", "")
                                         ,("type", "")
