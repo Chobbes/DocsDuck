@@ -40,10 +40,11 @@ instance Show Grade where
   show NoGrade = "0"
   show (Grade n) = show n
 
-instance FromField Grade where
-  parseField s = if s == "-"
-                    then pure NoGrade
-                    else pure (Grade (fromIntegral (round (read (unpack s) :: Double))))
+-- | Convert a string to a grade.
+stringToGrade :: String -> Grade
+stringToGrade s = if s == "-"
+                     then NoGrade
+                     else Grade (fromIntegral (round (read s :: Double)))
 
 data Submission = Submission { firstName :: String
                              , lastName :: String
@@ -52,36 +53,40 @@ data Submission = Submission { firstName :: String
                              , ccID :: String
                              , grade :: Grade} deriving (Show)
 
-instance FromNamedRecord Submission where
-  parseNamedRecord m = Submission <$>
-                       m .: "First name" <*>
-                       m .: "Surname" <*>
-                       m .: "Email address" <*>
-                       m .: "Student ID" <*>
-                       m .: "CCID" <*>
-                       m .: "Assignment: Exercise 0: SOS"
-
+-- | Convert a vector of ByteStrings of the format:
+-- |
+-- | [first_name, last_name, email_address, student_id, ccid, grade]
+-- |
+-- | into a Submission.
+vecToSub :: V.Vector ByteString -> Submission
+vecToSub v = Submission first last email sid ccid grade
+  where [first, last, email, sidStr, ccid, gradeStr] = map unpack (V.toList v)
+        grade = stringToGrade gradeStr
+        sid = read sidStr
+        
+vecToSubs :: V.Vector (V.Vector ByteString) -> [Submission]
+vecToSubs vs = map vecToSub (V.toList vs)
 
 -- uploadGrades user pass secretNum maxMark subs
 main :: IO ()
-main = do [user, pass] <- getArgs
-          subs <- LB.readFile "grades.csv"
-          let (Right (_, decodedSubs)) = decodeByName subs
-          
+main = do [user, pass, gradeFile, assignment] <- getArgs
+          subs <- LB.readFile gradeFile
+          let (Right decodedSubs) = decode HasHeader subs :: Either String (V.Vector (V.Vector ByteString))
+
           -- Login to DocsDB, and get the Oracle password.
           request <- getLogin user pass
           res <- withManager (httpLbs request)
           let oraclePass = LB.unpack . extractPass $ responseBody res
           
           -- Fetch the assignment information in order to get the secret number.
-          request <- getAssign user oraclePass
+          request <- getAssign user oraclePass assignment
           res <- withManager (httpLbs request)
           let secretNum =  LB.unpack . extractSecretNum $ responseBody res
           
           -- Upload the grades to docsdb.
-          request <- uploadGrades user oraclePass secretNum 100 (V.toList decodedSubs)
+          request <- uploadGrades user oraclePass secretNum 100 (vecToSubs decodedSubs)
           res <- withManager (httpLbs request)
-          
+
           -- Print the response just in case it's useful.
           print $ responseBody res
 
@@ -113,24 +118,24 @@ extractSecretNum res = secretNum
          tags = parseTags res
 
 -- | Given a user, and oracle password, return an assignment
-getAssign user pass = do initReq <- parseUrl "https://docsdb.cs.ualberta.ca/Prod/entersection2.cgi"
-                         let req = initReq { method = "POST"
-                                           , secure = True}
-                         return $ urlEncodedBody [("oracle.login", pack user)
-                                                 ,("oracle.password", pack pass)
-                                                 ,("season", "Fall")
-                                                 ,("year", "2014")
-                                                 ,("abbrev", "CMPUT")
-                                                 ,("coursenum", "274")
-                                                 ,("secttype", "All Sections")
-                                                 ,("sectpre", "")
-                                                 ,("sectnum", "")
-                                                 ,("type", "")
-                                                 ,("num", "")
-                                                 ,("order_by", "Student ID")
-                                                 ,(".submit", "Get List")
-                                                 ,("assignment", "Quiz ;1")
-                                                 ,("term", "1490")] req
+getAssign user pass assign = do initReq <- parseUrl "https://docsdb.cs.ualberta.ca/Prod/entersection2.cgi"
+                                let req = initReq { method = "POST"
+                                                  , secure = True}
+                                return $ urlEncodedBody [("oracle.login", pack user)
+                                                        ,("oracle.password", pack pass)
+                                                        ,("season", "Fall")
+                                                        ,("year", "2014")
+                                                        ,("abbrev", "CMPUT")
+                                                        ,("coursenum", "274")
+                                                        ,("secttype", "All Sections")
+                                                        ,("sectpre", "")
+                                                        ,("sectnum", "")
+                                                        ,("type", "")
+                                                        ,("num", "")
+                                                        ,("order_by", "Student ID")
+                                                        ,(".submit", "Get List")
+                                                        ,("assignment", pack assign)
+                                                        ,("term", "1490")] req
 
 -- | Send submissions to DocsDB
 uploadGrades user pass secretNum maxMark subs = 
