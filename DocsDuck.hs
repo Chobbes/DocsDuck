@@ -1,26 +1,94 @@
+{- Copyright (C) 2014 Calvin Beck
+
+   Permission is hereby granted, free of charge, to any person
+   obtaining a copy of this software and associated documentation files
+   (the "Software"), to deal in the Software without restriction,
+   including without limitation the rights to use, copy, modify, merge,
+   publish, distribute, sublicense, and/or sell copies of the Software,
+   and to permit persons to whom the Software is furnished to do so,
+   subject to the following conditions:
+
+   The above copyright notice and this permission notice shall be
+   included in all copies or substantial portions of the Software.
+
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+   EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+   MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+   NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS
+   BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN
+   ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+   CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+   SOFTWARE.
+-}
+
 {-# LANGUAGE OverloadedStrings #-}
 
-import Data.ByteString.Char8 hiding (head)
+import Control.Applicative
+import Data.ByteString.Char8 hiding (head, zip, concat, map, tail)
 import qualified Data.ByteString.Lazy.Char8 as LB
+import Data.Csv
+import qualified Data.Vector as V
 import Network.HTTP.Conduit
 import System.Environment
 import Text.HTML.TagSoup
 import Text.StringLike
 
 
+data Grade = NoGrade | Grade Integer
+
+instance Show Grade where
+  show NoGrade = "0"
+  show (Grade n) = show n
+
+instance FromField Grade where
+  parseField s = if s == "-"
+                    then pure NoGrade
+                    else pure (Grade (fromIntegral (round (read (unpack s) :: Double))))
+
+data Submission = Submission { firstName :: String
+                             , lastName :: String
+                             , email :: String
+                             , studentID :: Integer
+                             , ccID :: String
+                             , grade :: Grade} deriving (Show)
+
+instance FromNamedRecord Submission where
+  parseNamedRecord m = Submission <$>
+                       m .: "First name" <*>
+                       m .: "Surname" <*>
+                       m .: "Email address" <*>
+                       m .: "Student ID" <*>
+                       m .: "CCID" <*>
+                       m .: "Assignment: Exercise 0: SOS"
+
+
+-- uploadGrades user pass secretNum maxMark subs
 main :: IO ()
 main = do [user, pass] <- getArgs
+          subs <- LB.readFile "grades.csv"
+          let (Right (_, decodedSubs)) = decodeByName subs
+          
+          -- Login to DocsDB, and get the Oracle password.
           request <- getLogin user pass
           res <- withManager (httpLbs request)
-          let oraclePass = extractPass $ responseBody res
-          request <- getAssign user (LB.unpack oraclePass)
+          let oraclePass = LB.unpack . extractPass $ responseBody res
+          
+          -- Fetch the assignment information in order to get the secret number.
+          request <- getAssign user oraclePass
           res <- withManager (httpLbs request)
-          print $ responseBody res                     
+          let secretNum =  LB.unpack . extractSecretNum $ responseBody res
+          
+          -- Upload the grades to docsdb.
+          request <- uploadGrades user oraclePass secretNum 100 (V.toList decodedSubs)
+          res <- withManager (httpLbs request)
+          
+          -- Print the response just in case it's useful.
+          print $ responseBody res
 
 -- | Given a user and pass, send a login request to DocsDB
 getLogin user pass = do initReq <- parseUrl "https://docsdb.cs.ualberta.ca/Prod/login.cgi"
-                        let req = initReq {method = "POST"
-                                          ,secure = True}
+                        let req = initReq { method = "POST"
+                                          , secure = True}
                         return $ urlEncodedBody [("oracle.login", pack user)
                                                 ,("oracle.password", pack pass)
                                                 ,("season", "Fall")
@@ -37,11 +105,17 @@ extractPass res = pass
   where _:(TagOpen _ (_:_:(_,pass):_)):_ = head $ partitions (~== (" Docsdb Password: " :: String)) tags
         tags = parseTags res
 
+-- | From a response get the secret number for the assignment
+extractSecretNum :: StringLike t => t -> t
+extractSecretNum res = secretNum
+   where TagOpen _ [_,_,(_,secretNum)] = secretTag
+         secretTag = (head $ partitions (~== ("Leave the mark field blank\n\t    for work not completed; only enter zero for work completed which\n\t    received a grade of zero." :: String)) tags) !! 9
+         tags = parseTags res
 
 -- | Given a user, and oracle password, return an assignment
 getAssign user pass = do initReq <- parseUrl "https://docsdb.cs.ualberta.ca/Prod/entersection2.cgi"
-                         let req = initReq {method = "POST"
-                                           ,secure = True}
+                         let req = initReq { method = "POST"
+                                           , secure = True}
                          return $ urlEncodedBody [("oracle.login", pack user)
                                                  ,("oracle.password", pack pass)
                                                  ,("season", "Fall")
@@ -55,26 +129,34 @@ getAssign user pass = do initReq <- parseUrl "https://docsdb.cs.ualberta.ca/Prod
                                                  ,("num", "")
                                                  ,("order_by", "Student ID")
                                                  ,(".submit", "Get List")
-                                                 ,("assignment", "A1-;1")
+                                                 ,("assignment", "Quiz ;1")
                                                  ,("term", "1490")] req
 
-{-
- earole:"0"
- maxmark:"10"
- dbarole:"0"
- secretnum:"40777" -- Gotten from assign.
- id0:"1111151"
- mark0:""
- oldmark0:""
- eaflag0:""
- oldeaflag0:""
- .submit:"Enter Marks"
-("oracle.login", pack user)
-,("oracle.password", pack pass)
-,("season", "Fall")
-,("year", "2014")
-,("abbrev", "CMPUT")
-,("coursenum", "274")
-,("secttype", "All Sections")
-,("sectnum", "")
--}
+-- | Send submissions to DocsDB
+uploadGrades user pass secretNum maxMark subs = 
+  do initReq <- parseUrl "https://docsdb.cs.ualberta.ca/Prod/entersection3.cgi"
+     let req = initReq {method = "POST"
+                       ,secure = True}
+     return $ urlEncodedBody (grades ++ [(".submit", "Enter Marks")
+                                        ,("oracle.login", pack user)
+                                        ,("oracle.password", pack pass)
+                                        ,("season", "Fall")
+                                        ,("year", "2014")
+                                        ,("abbrev", "CMPUT")
+                                        ,("coursenum", "274")
+                                        ,("secttype", "All Sections")
+                                        ,("sectnum", "")
+                                        ,("type", "")
+                                        ,("num", "")
+                                        ,("order_by", "Student ID")
+                                        ,("earole", "0")
+                                        ,("maxmark", pack $ show maxMark)
+                                        ,("dbarole", "0")
+                                        ,("secretnum", pack secretNum)]) req
+     where grades = concat $ map makeGrade (zip [0..] subs)
+           makeGrade (id, sub) = let sid = show id in
+                                     [(pack $ "id" ++ sid, pack . show $ studentID sub)
+                                     ,(pack $ "mark" ++ sid, pack . show $ grade sub)
+                                     ,(pack $ "oldmark" ++ sid, "")
+                                     ,(pack $ "eaflag" ++ sid, "")
+                                     ,(pack $ "oldeaflag" ++ sid, "")]
