@@ -9,6 +9,7 @@ haskellPackages.cabal.mkDerivation (self: {
   isLibrary = false;
   isExecutable = true;
   buildDepends = with haskellPackages; [ conduit HTTP httpClient httpConduit tagsoup cassava vector ];
+  buildTools = with haskellPackages; [ cabalInstall ];
   meta = {
     description = "A simple Haskell program for importing moodle grades into DocsDB";
     license = self.stdenv.lib.licenses.mit;
