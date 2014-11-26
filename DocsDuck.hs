@@ -51,7 +51,9 @@ data Submission = Submission { firstName :: String
                              , email :: String
                              , studentID :: Integer
                              , ccID :: String
-                             , grade :: Grade} deriving (Show)
+                             , grade :: Grade
+                             }
+                             deriving (Show)
 
 -- | Convert a vector of ByteStrings of the format:
 -- |
@@ -107,14 +109,14 @@ getLogin user pass = do initReq <- parseUrl "https://docsdb.cs.ualberta.ca/Prod/
 -- | From a response get the oracle password
 extractPass :: StringLike t => t -> t
 extractPass res = pass
-  where _:(TagOpen _ (_:_:(_,pass):_)):_ = head $ partitions (~== (" Docsdb Password: " :: String)) tags
+  where _:TagOpen _ (_:_:(_,pass):_):_ = head $ partitions (~== (" Docsdb Password: " :: String)) tags
         tags = parseTags res
 
 -- | From a response get the secret number for the assignment
 extractSecretNum :: StringLike t => t -> t
 extractSecretNum res = secretNum
    where TagOpen _ [_,_,(_,secretNum)] = secretTag
-         secretTag = (head $ partitions (~== ("Leave the mark field blank\n\t    for work not completed; only enter zero for work completed which\n\t    received a grade of zero." :: String)) tags) !! 9
+         secretTag = head (partitions (~== ("Leave the mark field blank\n\t    for work not completed; only enter zero for work completed which\n\t    received a grade of zero." :: String)) tags) !! 9
          tags = parseTags res
 
 -- | Given a user, and oracle password, return an assignment
@@ -158,7 +160,7 @@ uploadGrades user pass course secretNum maxMark subs =
                                         ,("maxmark", pack $ show maxMark)
                                         ,("dbarole", "0")
                                         ,("secretnum", pack secretNum)]) req
-     where grades = concat $ map makeGrade (zip [0..] subs)
+     where grades = concatMap makeGrade (zip [0..] subs)
            makeGrade (id, sub) = let sid = show id in
                                      [(pack $ "id" ++ sid, pack . show $ studentID sub)
                                      ,(pack $ "mark" ++ sid, pack . show $ grade sub)
