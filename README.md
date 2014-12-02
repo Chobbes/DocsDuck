@@ -11,9 +11,7 @@ the [Haskell Platform](https://www.haskell.org/platform/).
 
     cabal install --bindir=/path/to/where/you/want/the/bin
 
-If you have [nix](http://nixos.org/nix/) you can use `nix-shell` to
-run the cabal install, and it will make sure any extra dependencies
-have been installed.
+If you have [nix](http://nixos.org/nix/) you can use `nix-env -if .` on the directory to install DocsDuck, or you can run `nix-shell` to drop yourself into a shell with all of the necessary dependencies, and run cabal install from there.
 
 Usage
 -----
