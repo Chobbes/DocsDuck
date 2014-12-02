@@ -20,7 +20,7 @@ Download a grades sheet containing one set of marks from Moodle in the plain tex
 
     DocsDuck ccid docsdb-pass course-number grades.csv "docsdbassignmentname"
 
-DocsDuck will then upload all of the marks to DocsDB and spit out the horrible HTML response so you can see if something went wrong. Make sure that the assignments are out of 100 marks on DocsDB.
+DocsDuck will then upload all of the marks to DocsDB and spit out the horrible HTML response so you can see if something went wrong. Make sure that the assignments are out of 100 marks on DocsDB. The assignment name may have a semicolon after any spaces.
 
 Issues
 ------
