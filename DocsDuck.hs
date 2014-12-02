@@ -24,7 +24,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 import Control.Applicative
-import Data.ByteString.Char8 hiding (head, zip, concat, map, tail)
+import Data.ByteString.Char8 hiding (head, zip, concat, map, tail, concatMap)
 import qualified Data.ByteString.Lazy.Char8 as LB
 import Data.Csv
 import qualified Data.Vector as V
