@@ -24,7 +24,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 import Control.Applicative
-import Data.ByteString.Char8 hiding (head, zip, concat, map, tail, concatMap)
+import Data.ByteString.Char8 hiding (head, zip, concat, map, tail, concatMap, init)
 import qualified Data.ByteString.Lazy.Char8 as LB
 import Data.Csv
 import qualified Data.Vector as V
@@ -73,6 +73,7 @@ vecToSubs vs = map vecToSub (V.toList vs)
 
 main :: IO ()
 main = do [user, pass, course, gradeFile, assignment] <- getArgs
+                                                         
           subs <- LB.readFile gradeFile
           let (Right decodedSubs) = decode HasHeader subs :: Either String (V.Vector (V.Vector ByteString))
 
@@ -85,9 +86,10 @@ main = do [user, pass, course, gradeFile, assignment] <- getArgs
           request <- getAssign user oraclePass course assignment
           res <- withManager (httpLbs request)
           let secretNum =  LB.unpack . extractSecretNum $ responseBody res
-          
+          let gradeList = extractGrades $ responseBody res
+
           -- Upload the grades to docsdb.
-          request <- uploadGrades user oraclePass course  secretNum 100 (vecToSubs decodedSubs)
+          request <- uploadGrades user oraclePass course secretNum 100 (vecToSubs decodedSubs)
           res <- withManager (httpLbs request)
 
           -- Print the response just in case it's useful.
@@ -112,6 +114,14 @@ extractPass :: StringLike t => t -> t
 extractPass res = pass
   where _:TagOpen _ (_:_:(_,pass):_):_ = head $ partitions (~== (" Docsdb Password: " :: String)) tags
         tags = parseTags res
+
+
+-- | From a response get the assignment grades. (CCID, Mark) pairs.
+extractGrades res = map getPair (init ((TagClose "" : firstGrade) : otherGrades))
+  where firstGrade:otherGrades = partitions (~== ("<br>" :: String)) gradeTags
+        gradeTags = head $ sections (~== ("  Id            Name          Mark   EA " :: String)) tags
+        tags = parseTags res
+        getPair tagList = (fromAttrib "value" (tagList !! 3), (fromAttrib "value" (tagList !! 5)))
 
 -- | From a response get the secret number for the assignment
 extractSecretNum :: StringLike t => t -> t
