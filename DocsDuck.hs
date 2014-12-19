@@ -31,20 +31,21 @@ import qualified Data.Vector as V
 import Network.HTTP.Conduit
 import System.Environment
 import Text.HTML.TagSoup
+import Text.Printf
 import Text.StringLike
 
 
-data Grade = NoGrade | Grade Integer
+data Grade = NoGrade | Grade Double
 
 instance Show Grade where
   show NoGrade = "0"
-  show (Grade n) = show n
+  show (Grade n) = printf "%.2f\n" n
 
 -- | Convert a string to a grade.
 stringToGrade :: String -> Grade
-stringToGrade s = if s == "-"
-                     then NoGrade
-                     else Grade (fromIntegral (round (read s :: Double)))
+stringToGrade s 
+  | s == "-" = NoGrade
+  | otherwise = Grade (read s)
 
 data Submission = Submission { firstName :: String
                              , lastName :: String
