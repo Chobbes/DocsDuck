@@ -26,7 +26,9 @@
 import Control.Applicative
 import Data.ByteString.Char8 hiding (head, zip, concat, map, tail, concatMap, init)
 import qualified Data.ByteString.Lazy.Char8 as LB
-import Data.Csv
+import Data.Csv hiding (lookup)
+import Data.Maybe
+import Data.String
 import qualified Data.Vector as V
 import Network.HTTP.Conduit
 import System.Environment
@@ -89,7 +91,7 @@ main = do [user, pass, course, gradeFile, assignment] <- getArgs
           let gradeList = extractGrades $ responseBody res
 
           -- Upload the grades to docsdb.
-          request <- uploadGrades user oraclePass course secretNum 100 (vecToSubs decodedSubs)
+          request <- uploadGrades user oraclePass course secretNum 100 (vecToSubs decodedSubs) gradeList
           res <- withManager (httpLbs request)
 
           -- Print the response just in case it's useful.
@@ -117,11 +119,12 @@ extractPass res = pass
 
 
 -- | From a response get the assignment grades. (CCID, Mark) pairs.
+extractGrades :: (StringLike t, IsString t, Show t) => t -> [(Integer, String)]
 extractGrades res = map getPair (init ((TagClose "" : firstGrade) : otherGrades))
   where firstGrade:otherGrades = partitions (~== ("<br>" :: String)) gradeTags
         gradeTags = head $ sections (~== ("  Id            Name          Mark   EA " :: String)) tags
         tags = parseTags res
-        getPair tagList = (fromAttrib "value" (tagList !! 3), (fromAttrib "value" (tagList !! 5)))
+        getPair tagList = (read . toString $ fromAttrib "value" (tagList !! 3), (toString $ fromAttrib "value" (tagList !! 5)))
 
 -- | From a response get the secret number for the assignment
 extractSecretNum :: StringLike t => t -> t
@@ -151,7 +154,7 @@ getAssign user pass course assign = do initReq <- parseUrl "https://docsdb.cs.ua
                                                                ,("term", "1490")] req
 
 -- | Send submissions to DocsDB
-uploadGrades user pass course secretNum maxMark subs = 
+uploadGrades user pass course secretNum maxMark subs oldMarks = 
   do initReq <- parseUrl "https://docsdb.cs.ualberta.ca/Prod/entersection3.cgi"
      let req = initReq {method = "POST"
                        ,secure = True}
@@ -175,6 +178,6 @@ uploadGrades user pass course secretNum maxMark subs =
            makeGrade (id, sub) = let sid = show id in
                                      [(pack $ "id" ++ sid, pack . show $ studentID sub)
                                      ,(pack $ "mark" ++ sid, pack . show $ grade sub)
-                                     ,(pack $ "oldmark" ++ sid, "")
+                                     ,(pack $ "oldmark" ++ sid, pack $ fromMaybe "" (lookup (studentID sub) oldMarks))
                                      ,(pack $ "eaflag" ++ sid, "")
                                      ,(pack $ "oldeaflag" ++ sid, "")]
