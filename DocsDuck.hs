@@ -41,7 +41,7 @@ data Grade = NoGrade | Grade Double
 
 instance Show Grade where
   show NoGrade = "0"
-  show (Grade n) = printf "%.2f\n" n
+  show (Grade n) = printf "%.2f" n
 
 -- | Convert a string to a grade.
 stringToGrade :: String -> Grade
@@ -119,12 +119,12 @@ extractPass res = pass
 
 
 -- | From a response get the assignment grades. (CCID, Mark) pairs.
-extractGrades :: (StringLike t, IsString t, Show t) => t -> [(Integer, String)]
+extractGrades :: (StringLike t, IsString t, Show t) => t -> [(Integer, (String, String))]
 extractGrades res = map getPair (init ((TagClose "" : firstGrade) : otherGrades))
   where firstGrade:otherGrades = partitions (~== ("<br>" :: String)) gradeTags
         gradeTags = head $ sections (~== ("  Id            Name          Mark   EA " :: String)) tags
         tags = parseTags res
-        getPair tagList = (read . toString $ fromAttrib "value" (tagList !! 3), (toString $ fromAttrib "value" (tagList !! 5)))
+        getPair tagList = (read . toString $ fromAttrib "value" (tagList !! 3), (toString $ fromAttrib "value" (tagList !! 5), toString $ fromAttrib "value" (tagList !! 13)))
 
 -- | From a response get the secret number for the assignment
 extractSecretNum :: StringLike t => t -> t
@@ -175,9 +175,10 @@ uploadGrades user pass course secretNum maxMark subs oldMarks =
                                         ,("dbarole", "0")
                                         ,("secretnum", pack secretNum)]) req
      where grades = concatMap makeGrade (zip [0..] subs)
-           makeGrade (id, sub) = let sid = show id in
-                                     [(pack $ "id" ++ sid, pack . show $ studentID sub)
-                                     ,(pack $ "mark" ++ sid, pack . show $ grade sub)
-                                     ,(pack $ "oldmark" ++ sid, pack $ fromMaybe "" (lookup (studentID sub) oldMarks))
-                                     ,(pack $ "eaflag" ++ sid, "")
-                                     ,(pack $ "oldeaflag" ++ sid, "")]
+           makeGrade (id, sub) = let sid = show id
+                                     (oldMark, oldEa) = fromMaybe ("", "") (lookup (studentID sub) oldMarks)
+                                 in [(pack $ "id" ++ sid, pack . show $ studentID sub)
+                                    ,(pack $ "mark" ++ sid, pack . show $ grade sub)
+                                    ,(pack $ "oldmark" ++ sid, pack oldMark)
+                                    ,(pack $ "eaflag" ++ sid, pack oldEa)
+                                    ,(pack $ "oldeaflag" ++ sid, pack oldEa)]
