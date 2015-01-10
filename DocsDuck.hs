@@ -24,9 +24,11 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 import Control.Applicative
-import Data.ByteString.Char8 hiding (head, zip, concat, map, tail, concatMap)
+import Data.ByteString.Char8 hiding (head, zip, concat, map, tail, concatMap, init)
 import qualified Data.ByteString.Lazy.Char8 as LB
-import Data.Csv
+import Data.Csv hiding (lookup)
+import Data.Maybe
+import Data.String
 import qualified Data.Vector as V
 import Network.HTTP.Conduit
 import System.Environment
@@ -39,7 +41,7 @@ data Grade = NoGrade | Grade Double
 
 instance Show Grade where
   show NoGrade = "0"
-  show (Grade n) = printf "%.2f\n" n
+  show (Grade n) = printf "%.2f" n
 
 -- | Convert a string to a grade.
 stringToGrade :: String -> Grade
@@ -73,6 +75,7 @@ vecToSubs vs = map vecToSub (V.toList vs)
 
 main :: IO ()
 main = do [user, pass, course, gradeFile, assignment] <- getArgs
+                                                         
           subs <- LB.readFile gradeFile
           let (Right decodedSubs) = decode HasHeader subs :: Either String (V.Vector (V.Vector ByteString))
 
@@ -85,9 +88,10 @@ main = do [user, pass, course, gradeFile, assignment] <- getArgs
           request <- getAssign user oraclePass course assignment
           res <- withManager (httpLbs request)
           let secretNum =  LB.unpack . extractSecretNum $ responseBody res
-          
+          let gradeList = extractGrades $ responseBody res
+
           -- Upload the grades to docsdb.
-          request <- uploadGrades user oraclePass course  secretNum 100 (vecToSubs decodedSubs)
+          request <- uploadGrades user oraclePass course secretNum 100 (vecToSubs decodedSubs) gradeList
           res <- withManager (httpLbs request)
 
           -- Print the response just in case it's useful.
@@ -112,6 +116,15 @@ extractPass :: StringLike t => t -> t
 extractPass res = pass
   where _:TagOpen _ (_:_:(_,pass):_):_ = head $ partitions (~== (" Docsdb Password: " :: String)) tags
         tags = parseTags res
+
+
+-- | From a response get the assignment grades. (CCID, Mark) pairs.
+extractGrades :: (StringLike t, IsString t, Show t) => t -> [(Integer, (String, String))]
+extractGrades res = map getPair (init ((TagClose "" : firstGrade) : otherGrades))
+  where firstGrade:otherGrades = partitions (~== ("<br>" :: String)) gradeTags
+        gradeTags = head $ sections (~== ("  Id            Name          Mark   EA " :: String)) tags
+        tags = parseTags res
+        getPair tagList = (read . toString $ fromAttrib "value" (tagList !! 3), (toString $ fromAttrib "value" (tagList !! 5), toString $ fromAttrib "value" (tagList !! 13)))
 
 -- | From a response get the secret number for the assignment
 extractSecretNum :: StringLike t => t -> t
@@ -141,7 +154,7 @@ getAssign user pass course assign = do initReq <- parseUrl "https://docsdb.cs.ua
                                                                ,("term", "1490")] req
 
 -- | Send submissions to DocsDB
-uploadGrades user pass course secretNum maxMark subs = 
+uploadGrades user pass course secretNum maxMark subs oldMarks = 
   do initReq <- parseUrl "https://docsdb.cs.ualberta.ca/Prod/entersection3.cgi"
      let req = initReq {method = "POST"
                        ,secure = True}
@@ -162,9 +175,10 @@ uploadGrades user pass course secretNum maxMark subs =
                                         ,("dbarole", "0")
                                         ,("secretnum", pack secretNum)]) req
      where grades = concatMap makeGrade (zip [0..] subs)
-           makeGrade (id, sub) = let sid = show id in
-                                     [(pack $ "id" ++ sid, pack . show $ studentID sub)
-                                     ,(pack $ "mark" ++ sid, pack . show $ grade sub)
-                                     ,(pack $ "oldmark" ++ sid, "")
-                                     ,(pack $ "eaflag" ++ sid, "")
-                                     ,(pack $ "oldeaflag" ++ sid, "")]
+           makeGrade (id, sub) = let sid = show id
+                                     (oldMark, oldEa) = fromMaybe ("", "") (lookup (studentID sub) oldMarks)
+                                 in [(pack $ "id" ++ sid, pack . show $ studentID sub)
+                                    ,(pack $ "mark" ++ sid, pack . show $ grade sub)
+                                    ,(pack $ "oldmark" ++ sid, pack oldMark)
+                                    ,(pack $ "eaflag" ++ sid, pack oldEa)
+                                    ,(pack $ "oldeaflag" ++ sid, pack oldEa)]
