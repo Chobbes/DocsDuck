@@ -24,7 +24,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 import Control.Applicative
-import Data.ByteString.Char8 hiding (head, zip, concat, map, tail, concatMap, init)
+import Data.ByteString.Char8 hiding (head, zip, concat, map, tail, concatMap, init, putStrLn)
 import qualified Data.ByteString.Lazy.Char8 as LB
 import Data.Csv hiding (lookup)
 import Data.Maybe
@@ -80,17 +80,20 @@ main = do [user, pass, course, gradeFile, assignment] <- getArgs
           let (Right decodedSubs) = decode HasHeader subs :: Either String (V.Vector (V.Vector ByteString))
 
           -- Login to DocsDB, and get the Oracle password.
+          putStrLn "Logging into DocsDB..."
           request <- getLogin user pass
           res <- withManager (httpLbs request)
           let oraclePass = LB.unpack . extractPass $ responseBody res
           
           -- Fetch the assignment information in order to get the secret number.
+          putStrLn "Getting assignment information..."
           request <- getAssign user oraclePass course assignment
           res <- withManager (httpLbs request)
           let secretNum =  LB.unpack . extractSecretNum $ responseBody res
           let gradeList = extractGrades $ responseBody res
 
           -- Upload the grades to docsdb.
+          putStrLn "Uploading grades..."
           request <- uploadGrades user oraclePass course secretNum 100 (vecToSubs decodedSubs) gradeList
           res <- withManager (httpLbs request)
 
@@ -103,8 +106,8 @@ getLogin user pass = do initReq <- parseUrl "https://docsdb.cs.ualberta.ca/Prod/
                                           , secure = True}
                         return $ urlEncodedBody [("oracle.login", pack user)
                                                 ,("oracle.password", pack pass)
-                                                ,("season", "Fall")
-                                                ,("year", "2014")
+                                                ,("season", "Winter")
+                                                ,("year", "2015")
                                                 ,("abbrev", "CMPUT")
                                                 ,("coursenum", "")
                                                 ,("secttype", "All+Sections")
@@ -139,8 +142,8 @@ getAssign user pass course assign = do initReq <- parseUrl "https://docsdb.cs.ua
                                                          , secure = True}
                                        return $ urlEncodedBody [("oracle.login", pack user)
                                                                ,("oracle.password", pack pass)
-                                                               ,("season", "Fall")
-                                                               ,("year", "2014")
+                                                               ,("season", "Winter")
+                                                               ,("year", "2015")
                                                                ,("abbrev", "CMPUT")
                                                                ,("coursenum", pack course)
                                                                ,("secttype", "All Sections")
@@ -161,8 +164,8 @@ uploadGrades user pass course secretNum maxMark subs oldMarks =
      return $ urlEncodedBody (grades ++ [(".submit", "Enter Marks")
                                         ,("oracle.login", pack user)
                                         ,("oracle.password", pack pass)
-                                        ,("season", "Fall")
-                                        ,("year", "2014")
+                                        ,("season", "Winter")
+                                        ,("year", "2015")
                                         ,("abbrev", "CMPUT")
                                         ,("coursenum", pack course)
                                         ,("secttype", "All Sections")
