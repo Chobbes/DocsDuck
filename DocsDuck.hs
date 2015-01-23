@@ -151,7 +151,7 @@ getAssign user pass course assign = do initReq <- parseUrl "https://docsdb.cs.ua
                                                                ,("order_by", "Student ID")
                                                                ,(".submit", "Get List")
                                                                ,("assignment", pack assign)
-                                                               ,("term", "1490")] req
+                                                               ,("term", "1500")] req
 
 -- | Send submissions to DocsDB
 uploadGrades user pass course secretNum maxMark subs oldMarks = 
