@@ -65,7 +65,7 @@ data Submission = Submission { firstName :: String
 -- | into a Submission.
 vecToSub :: V.Vector ByteString -> Submission
 vecToSub v = Submission first last email sid ccid grade
-  where [first, last, email, sidStr, ccid, gradeStr] = map unpack (V.toList v)
+  where [first, last, email, sidStr, ccid, gradeStr, timeStamp] = map unpack (V.toList v)
         grade = stringToGrade gradeStr
         sid = read sidStr
 
